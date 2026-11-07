@@ -1,0 +1,30 @@
+user 202345021
+topic readwrite #
+topic readwrite raw/+/sensor
+topic readwrite sensor/+/data
+topic readwrite cmd/+/rpc/#
+topic readwrite config/+/attributes
+topic readwrite factory/+/diagnostics
+topic read $SYS/#
+
+user sensor
+topic write raw/+/sensor
+topic write sensor/+/data
+topic read cmd/+/rpc/#
+
+user edgeai
+topic read raw/+/sensor
+topic read config/+/attributes
+topic read cmd/edge-ai/#
+topic write factory/+/diagnostics
+
+user gateway
+topic read factory/+/diagnostics
+topic read sensor/+/data
+topic write config/+/attributes
+topic write cmd/+/rpc/#
+
+user monitor
+topic read #
+topic read $SYS/#
+topic write cmd/edge-ai/#
