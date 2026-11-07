@@ -5,16 +5,17 @@ import numpy as np
 import paho.mqtt.client as mqtt
 from scipy.stats import kurtosis
 
-# 브로커 설정 (게이트웨이 로컬 Mosquitto 컨테이너)
+# 브로커 및 선풍기 물리 규격 설정
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USER   = os.getenv("MQTT_USER", "202345021")
 MQTT_PASS   = os.getenv("MQTT_PASS", "1234")
 FAN_SPEED   = int(os.getenv("FAN_SPEED", 1))
+BLADE_COUNT = int(os.getenv("BLADE_COUNT", 5))  # ★ 날개 수 5개 설정 (Z = 5)
 
 def extract_features(raw_samples, fs=1000.0):
     """
-    ESP32 원시 파형에서 ML 모델 추론에 필요한 8대 특징량 고속 계산
+    ESP32 원시 파형에서 ML 8대 특징량 및 5날개 통과 주파수(BPF) 고속 계산
     """
     x = np.array(raw_samples, dtype=np.float64)
     N = len(x)
@@ -38,30 +39,44 @@ def extract_features(raw_samples, fs=1000.0):
     fft_vals = np.abs(np.fft.rfft(x_ac * win)) * (4.0 / N)
     freqs = np.fft.rfftfreq(N, d=1.0 / fs)
 
-    # 14Hz ~ 35Hz (840 ~ 2100 RPM) 회전 대역 타깃팅 (바닥 진동 12.7Hz 차단)
+    # 14Hz ~ 35Hz (840 ~ 2100 RPM) 회전 1x 대역 타깃팅 (바닥 진동 12.7Hz 차단)
     valid_idx = np.where((freqs >= 14.0) & (freqs <= 35.0))[0]
 
     VIB_RUNNING_THRESHOLD_G = 0.050
     PEAK_AMPLITUDE_MIN_G   = 0.008
 
+    f_1x = 0.0
+    band_1x = 0.0
+    rpm_est = 0.0
+    band_harm = 0.0
+    f_bp_calc = 0.0
+    f_bp_meas = 0.0
+    band_bp = 0.0
+
     if len(valid_idx) > 0 and rms_val >= VIB_RUNNING_THRESHOLD_G:
         peak_idx = valid_idx[np.argmax(fft_vals[valid_idx])]
-        f_1x = freqs[peak_idx]
+        f_1x = float(freqs[peak_idx])
         band_1x = float(fft_vals[peak_idx])
 
         # 피크 진폭 유효성 검증
         if band_1x >= PEAK_AMPLITUDE_MIN_G:
             rpm_est = float(f_1x * 60.0)
+            
+            # ★ Step 2: 5날개 통과 주파수(BPF = 5 * f_r) 이론 계산
+            f_bp_calc = float(BLADE_COUNT * f_1x)
+
+            # 스펙트럼에서 계산된 BPF 주변 (±2.5Hz) 실측 피크 탐색
+            bp_window = np.where((freqs >= f_bp_calc - 2.5) & (freqs <= f_bp_calc + 2.5))[0]
+            if len(bp_window) > 0:
+                bp_idx = bp_window[np.argmax(fft_vals[bp_window])]
+                f_bp_meas = float(freqs[bp_idx])
+                band_bp = float(fft_vals[bp_idx])
         else:
             rpm_est = 0.0
             band_1x = 0.0
 
-        # 고조파 대역 에너지 합
+        # 고조파 대역 에너지 합 (40Hz ~ 200Hz - 5x BPF 포함 대역)
         band_harm = float(np.sum(fft_vals[(freqs >= 40.0) & (freqs <= 200.0)]))
-    else:
-        rpm_est = 0.0
-        band_1x = 0.0
-        band_harm = 0.0
 
     # 파생 상대 지표 (r1x, rh) 및 속도 RMS
     r1x = round(band_1x / rms_val, 3) if rms_val > 0 else 0.0
@@ -69,6 +84,7 @@ def extract_features(raw_samples, fs=1000.0):
     vel_rms = round(rms_val * 9806.65 / (2 * np.pi * max(15.0, rpm_est / 60.0)) / 1000.0, 3) if rpm_est > 0 else 0.0
 
     return {
+        # ML 8대 특징량 (model.joblib 호환 유지)
         "acc_rms_g": round(rms_val, 4),
         "crest_factor": round(crest_factor, 3),
         "kurtosis": round(kurt, 3),
@@ -77,13 +93,19 @@ def extract_features(raw_samples, fs=1000.0):
         "band_harm": round(band_harm, 4),
         "r1x": r1x,
         "rh": rh,
-        "vel_rms_mms": vel_rms
+        "vel_rms_mms": vel_rms,
+        # Step 2 날개 통과 주파수 지표 (Z = 5)
+        "blade_count": BLADE_COUNT,
+        "f_1x": round(f_1x, 2),
+        "f_bp_calc": round(f_bp_calc, 2),
+        "f_bp_meas": round(f_bp_meas, 2),
+        "band_bp": round(band_bp, 4)
     }
 
 def on_connect(client, userdata, flags, rc):
-    print(f"[GATEWAY-EXTRACTOR] 브로커 연결 성공 (rc={rc})")
+    print(f"[GATEWAY-EXTRACTOR] 브로커 연결 성공 (rc={rc})", flush=True)
     client.subscribe("raw/+/sensor", qos=1)
-    print("[GATEWAY-EXTRACTOR] 구독 토픽: raw/+/sensor")
+    print("[GATEWAY-EXTRACTOR] 구독 토픽: raw/+/sensor", flush=True)
 
 def on_message(client, userdata, msg):
     try:
@@ -96,12 +118,12 @@ def on_message(client, userdata, msg):
         seq = data.get("seq", 0)
         ts = int(data.get("ts", time.time() * 1000))
 
-        # 1. 고속 특징 추출
+        # 1. 고속 특징 추출 (BPF 포함)
         feats = extract_features(raw_samples, fs=fs_meas)
         if not feats:
             return
 
-        # 2. 엣지 AI 추론용 입력 페이로드 패키징 (순수 수치 데이터만 포함)
+        # 2. 엣지 AI 추론 및 게이트웨이 텔레메트리 패키징
         features_payload = {
             "seq": int(seq),
             "ts": ts,
@@ -114,10 +136,16 @@ def on_message(client, userdata, msg):
         out_topic = f"factory/{device_name}/features"
         client.publish(out_topic, json.dumps(features_payload), qos=1)
 
-        print(f"[EXTRACT] seq={seq} -> {out_topic} | RMS={feats['acc_rms_g']}g | 1x={feats['band_1x']}g | RPM={feats['rpm_est']}")
+        # 터미널 출력 포맷 (Step 2 검증값 즉시 가시화)
+        print(
+            f"[EXTRACT] seq={seq} | RMS={feats['acc_rms_g']}g | "
+            f"1x={feats['f_1x']}Hz ({feats['rpm_est']} RPM) | "
+            f"BPF(5x)={feats['f_bp_meas']}Hz (계산={feats['f_bp_calc']}Hz, 진폭={feats['band_bp']}g)",
+            flush=True
+        )
 
     except Exception as e:
-        print(f"[ERROR] 특징 추출 실패: {e}")
+        print(f"[ERROR] 특징 추출 실패: {e}", flush=True)
 
 if __name__ == "__main__":
     client = mqtt.Client(client_id="gateway-feature-extractor")
@@ -125,12 +153,13 @@ if __name__ == "__main__":
     client.on_connect = on_connect
     client.on_message = on_message
 
-    print(f"[GATEWAY-EXTRACTOR] {MQTT_BROKER}:{MQTT_PORT} 접속 시도 중...")
+    print(f"[GATEWAY-EXTRACTOR] {MQTT_BROKER}:{MQTT_PORT} 접속 시도 중...", flush=True)
     while True:
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
             break
-        except Exception:
+        except Exception as e:
+            print(f"[GATEWAY-EXTRACTOR] 접속 실패 ({e}), 2초 후 재시도...", flush=True)
             time.sleep(2)
 
     client.loop_forever()
