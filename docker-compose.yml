@@ -25,21 +25,18 @@ services:
 
   edge-ai:
     build: ./edge-ai
-    image: rep8-edge-ai:latest
-    container_name: edge-ai-diagnostics
+    image: rep8-gateway-extractor:latest
+    container_name: gateway-feature-extractor
     restart: always
     environment:
+      MQTT_BROKER: mosquitto
       MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
       MQTT_USER: 202345021
       MQTT_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
-      MODE: ${MODE:-run}
       FAN_SPEED: ${FAN_SPEED:-2}
-      LABEL: ${LABEL:-run}
-      SAVE_RAW: ${SAVE_RAW:-0}
+      BLADE_COUNT: ${BLADE_COUNT:-5}
       DATA_DIR: /data
-      R1X_FAULT: "3.0"
-      RH_FAULT: "3.0"
-      KURT_FAULT: "5.0"
     volumes:
       - ./edge-ai/data:/data
     depends_on:

@@ -11,7 +11,7 @@ MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USER   = os.getenv("MQTT_USER", "202345021")
 MQTT_PASS   = os.getenv("MQTT_PASS", "1234")
 FAN_SPEED   = int(os.getenv("FAN_SPEED", 1))
-BLADE_COUNT = int(os.getenv("BLADE_COUNT", 5))  # ★ 날개 수 5개 설정 (Z = 5)
+BLADE_COUNT = int(os.getenv("BLADE_COUNT", 5))  # 실물 선풍기 날개 수 (Z = 5)
 
 def extract_features(raw_samples, fs=1000.0):
     """
@@ -39,7 +39,7 @@ def extract_features(raw_samples, fs=1000.0):
     fft_vals = np.abs(np.fft.rfft(x_ac * win)) * (4.0 / N)
     freqs = np.fft.rfftfreq(N, d=1.0 / fs)
 
-    # 14Hz ~ 35Hz (840 ~ 2100 RPM) 회전 1x 대역 타깃팅 (바닥 진동 12.7Hz 차단)
+    # 14Hz ~ 35Hz (840 ~ 2100 RPM) 회전 1x 대역 타깃팅 (바닥 진동 12.7Hz 간섭 배제)
     valid_idx = np.where((freqs >= 14.0) & (freqs <= 35.0))[0]
 
     VIB_RUNNING_THRESHOLD_G = 0.050
@@ -62,7 +62,7 @@ def extract_features(raw_samples, fs=1000.0):
         if band_1x >= PEAK_AMPLITUDE_MIN_G:
             rpm_est = float(f_1x * 60.0)
             
-            # ★ Step 2: 5날개 통과 주파수(BPF = 5 * f_r) 이론 계산
+            # Step 2: 5날개 통과 주파수(BPF = Z * f_1x) 이론 계산
             f_bp_calc = float(BLADE_COUNT * f_1x)
 
             # 스펙트럼에서 계산된 BPF 주변 (±2.5Hz) 실측 피크 탐색
@@ -104,26 +104,39 @@ def extract_features(raw_samples, fs=1000.0):
 
 def on_connect(client, userdata, flags, rc):
     print(f"[GATEWAY-EXTRACTOR] 브로커 연결 성공 (rc={rc})", flush=True)
-    client.subscribe("raw/+/sensor", qos=1)
-    print("[GATEWAY-EXTRACTOR] 구독 토픽: raw/+/sensor", flush=True)
+    # 원시 파형 및 ThingsBoard 설정 하향 토픽 구독
+    client.subscribe([("raw/+/sensor", 1), ("config/+/attributes", 1)])
+    print("[GATEWAY-EXTRACTOR] 구독 토픽 등록: raw/+/sensor, config/+/attributes", flush=True)
 
 def on_message(client, userdata, msg):
+    global FAN_SPEED, BLADE_COUNT
     try:
         parts = msg.topic.split('/')
-        device_name = parts[1]
+        
+        # 1. ThingsBoard 설정 하향 (config/<dev>/attributes) 처리
+        if parts[0] == "config":
+            payload_str = msg.payload.decode('utf-8')
+            cfg = json.loads(payload_str)
+            if "fanSpeed" in cfg:
+                FAN_SPEED = int(cfg["fanSpeed"])
+            if "bladeCount" in cfg:
+                BLADE_COUNT = int(cfg["bladeCount"])
+            print(f"[GATEWAY-CFG] 속성 하향 갱신: fanSpeed={FAN_SPEED}, bladeCount={BLADE_COUNT}", flush=True)
+            return
 
+        # 2. ESP32 원시 파형 수신 및 특징 추출
+        device_name = parts[1]
         data = json.loads(msg.payload.decode('utf-8'))
         raw_samples = data.get("vib_raw", [])
         fs_meas = data.get("fs_meas", 1000.0)
         seq = data.get("seq", 0)
         ts = int(data.get("ts", time.time() * 1000))
 
-        # 1. 고속 특징 추출 (BPF 포함)
         feats = extract_features(raw_samples, fs=fs_meas)
         if not feats:
             return
 
-        # 2. 엣지 AI 추론 및 게이트웨이 텔레메트리 패키징
+        # 3. 엣지 AI 파이로 중계할 정제 텔레메트리 패키징
         features_payload = {
             "seq": int(seq),
             "ts": ts,
@@ -132,13 +145,12 @@ def on_message(client, userdata, msg):
             **feats
         }
 
-        # 3. 엣지 AI 파이가 구독할 전용 토픽으로 발행
+        # 4. RPi #2 (Edge AI) 전용 토픽 발행 (95.8% 이상 대역폭 압축)
         out_topic = f"factory/{device_name}/features"
         client.publish(out_topic, json.dumps(features_payload), qos=1)
 
-        # 터미널 출력 포맷 (Step 2 검증값 즉시 가시화)
         print(
-            f"[EXTRACT] seq={seq} | RMS={feats['acc_rms_g']}g | "
+            f"[EXTRACT] seq={seq} | s{FAN_SPEED} | RMS={feats['acc_rms_g']}g | "
             f"1x={feats['f_1x']}Hz ({feats['rpm_est']} RPM) | "
             f"BPF(5x)={feats['f_bp_meas']}Hz (계산={feats['f_bp_calc']}Hz, 진폭={feats['band_bp']}g)",
             flush=True
@@ -152,6 +164,7 @@ if __name__ == "__main__":
     client.username_pw_set(MQTT_USER, MQTT_PASS)
     client.on_connect = on_connect
     client.on_message = on_message
+    client.reconnect_delay_set(1, 30)
 
     print(f"[GATEWAY-EXTRACTOR] {MQTT_BROKER}:{MQTT_PORT} 접속 시도 중...", flush=True)
     while True:
