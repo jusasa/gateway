@@ -44,6 +44,26 @@ services:
     logging: *logging
     networks: [iot-net]
 
+  alarm-server:
+    build: ./edge-ai
+    image: rep8-gateway-extractor:latest
+    container_name: gateway-alarm-server
+    restart: always
+    command: ["python", "-u", "alarm_server.py"]
+    ports:
+      - "50051:50051"
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USER: 202345021
+      MQTT_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
+      BUZZER_PIN: 18
+      GRPC_PORT: 50051
+    depends_on:
+      mosquitto: { condition: service_healthy }
+    logging: *logging
+    networks: [iot-net]
+
   tb-gateway:
     image: thingsboard/tb-gateway:3.8-stable
     container_name: tb-gateway
