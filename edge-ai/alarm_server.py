@@ -144,12 +144,20 @@ class AlarmActuatorServicer:
 
     def SilenceAlarm(self, request, context=None):
         """정상 복귀 시 무음화 RPC 수신"""
+        global PWM_OBJ
         dev_id = getattr(request, 'device_id', 'machine01')
         reason = getattr(request, 'reason', '정상 복귀')
 
         CURRENT_STATE["active"] = False
         CURRENT_STATE["code"] = 0
         CURRENT_STATE["hint"] = ""
+
+        # 하드웨어 PWM 즉시 중지 (잔류 발진 원천 차단)
+        if HAS_GPIO and PWM_OBJ:
+            try:
+                PWM_OBJ.stop()
+            except Exception:
+                pass
 
         print(f"\n[gRPC-SERVER] 🔕 알람 해제 RPC 수신: 사유='{reason}'", flush=True)
 

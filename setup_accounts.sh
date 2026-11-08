@@ -17,4 +17,4 @@ docker run --rm -e MQTT_USER -e MQTT_PASS -e SENSOR_PASS -e GATEWAY_PASS -e MON_
   mosquitto_passwd -b "$f" monitor "$MON_PASS"
   chmod 0644 "$f"
 '
-echo "[성공] 202345021 포함 5개 계정 암호 파일 생성 완료"
+echo "[성공] 5개 계정 암호 파일 생성 완료"

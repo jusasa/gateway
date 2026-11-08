@@ -17,6 +17,7 @@ topic read raw/+/sensor
 topic read config/+/attributes
 topic read cmd/edge-ai/#
 topic write factory/+/diagnostics
+topic write cmd/+/rpc/#
 
 user gateway
 topic read factory/+/diagnostics
