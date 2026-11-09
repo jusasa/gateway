@@ -10,12 +10,13 @@ services:
     restart: always
     ports: ["1883:1883"]
     environment:
+      MQTT_USER: ${MQTT_USER:?.env에 MQTT_USER가 없습니다}
       MON_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
       - mosquitto-data:/mosquitto/data
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -u 202345021 -P \"$$MON_PASS\" -t 'raw/healthcheck/sensor' -m 'ok'"]
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -u \"$$MQTT_USER\" -P \"$$MON_PASS\" -t 'raw/healthcheck/sensor' -m 'ok'"]
       interval: 30s
       timeout: 15s
       retries: 3
@@ -31,8 +32,8 @@ services:
     environment:
       MQTT_BROKER: mosquitto
       MQTT_HOST: mosquitto
-      MQTT_PORT: 1883
-      MQTT_USER: 202345021
+      MQTT_PORT: 1833
+      MQTT_USER: ${MQTT_USER:?.env에 MQTT_USER가 없습니다}
       MQTT_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
       FAN_SPEED: ${FAN_SPEED:-2}
       BLADE_COUNT: ${BLADE_COUNT:-5}
@@ -55,7 +56,7 @@ services:
     environment:
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
-      MQTT_USER: 202345021
+      MQTT_USER: ${MQTT_USER:?.env에 MQTT_USER가 없습니다}
       MQTT_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
       BUZZER_PIN: 18
       GRPC_PORT: 50051
