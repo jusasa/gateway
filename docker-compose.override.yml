@@ -16,8 +16,8 @@ services:
     environment:
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
-      - MQTT_USER=202345021
-      - MQTT_PASS=1234
+      - MQTT_USER=${MQTT_USER:?.env에 MQTT_USER가 없습니다}
+      - MQTT_PASS=${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
     depends_on:
       - mosquitto
 

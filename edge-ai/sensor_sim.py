@@ -35,7 +35,7 @@ def main():
     a = p.parse_args()
 
     client = mqtt.Client(client_id=f"sim_{a.machine}_{os.getpid()}")
-    client.username_pw_set(os.getenv("MQTT_USER", "rep6iot"), os.getenv("MQTT_PASS", "rep6pass"))
+    client.username_pw_set(os.getenv("MQTT_USER"), os.getenv("MQTT_PASS"))
     client.connect(os.getenv("MQTT_HOST", "mosquitto"), int(os.getenv("MQTT_PORT", "1883")), 60)
     client.loop_start()
 

@@ -30,8 +30,8 @@ BUZZER_PIN    = int(os.getenv("BUZZER_PIN", 18))       # PWM 지원 GPIO 18번
 GRPC_PORT     = int(os.getenv("GRPC_PORT", 50051))     # gRPC 서비스 포트
 MQTT_BROKER   = os.getenv("MQTT_BROKER", "127.0.0.1")
 MQTT_PORT     = int(os.getenv("MQTT_PORT", 1883))
-MQTT_USER     = os.getenv("MQTT_USER", "202345021")
-MQTT_PASS     = os.getenv("MQTT_PASS", "1234")
+MQTT_USER     = os.getenv("MQTT_USER")
+MQTT_PASS     = os.getenv("MQTT_PASS")
 
 # 전역 부저 상태 및 스레드 제어
 CURRENT_STATE = {"active": False, "code": 0, "freq": 2700, "hint": ""}

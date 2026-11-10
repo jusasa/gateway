@@ -12,8 +12,8 @@ parser.add_argument("--speed", type=int, default=2, help="선풍기 바람 세�
 parser.add_argument("--duration", type=int, default=60, help="수집 시간(초, 기본 60초)")
 parser.add_argument("--host", type=str, default=os.getenv("MQTT_HOST", "127.0.0.1"), help="Mosquitto 브로커 IP")
 parser.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", 1883)), help="Mosquitto 포트")
-parser.add_argument("--user", type=str, default=os.getenv("MQTT_USER", "202345021"), help="MQTT 사용자")
-parser.add_argument("--password", type=str, default=os.getenv("MQTT_PASS", "1234"), help="MQTT 비밀번호")
+parser.add_argument("--user", type=str, default=os.getenv("MQTT_USER"), help="MQTT 사용자")
+parser.add_argument("--password", type=str, default=os.getenv("MQTT_PASS"), help="MQTT 비밀번호")
 parser.add_argument("--output", type=str, default="vibration_dataset.csv", help="저장할 CSV 파일명")
 args = parser.parse_args()
 

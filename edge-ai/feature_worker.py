@@ -8,8 +8,8 @@ from scipy.stats import kurtosis
 # 브로커 및 선풍기 물리 규격 설정
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
-MQTT_USER   = os.getenv("MQTT_USER", "202345021")
-MQTT_PASS   = os.getenv("MQTT_PASS", "1234")
+MQTT_USER   = os.getenv("MQTT_USER")
+MQTT_PASS   = os.getenv("MQTT_PASS")
 FAN_SPEED   = int(os.getenv("FAN_SPEED", 1))
 BLADE_COUNT = int(os.getenv("BLADE_COUNT", 5))  # 실물 선풍기 날개 수 (Z = 5)
 SHAFT_SPEED_RPM = float(os.getenv("SHAFT_SPEED_RPM", 0.0))  # 0.0: 자동 하모닉 탐색, >0: 수동 오버라이드 (Step 2 규격)

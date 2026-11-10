@@ -4,3 +4,5 @@ mosquitto/data
 .env
 edge-ai/data
 edge-ai/diagnostics_worker.py
+__pycache__/
+
